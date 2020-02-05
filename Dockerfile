@@ -1,10 +1,36 @@
-FROM nixos/nix
+FROM ubuntu:18.04
 
-# Configure and install GHC 8.6.5, Cachix, and HIE
-RUN nix-env -iA cachix -f https://cachix.org/api/v1/install && cachix use all-hies \
-    #
-    # Install GHC 8.6.5
-    && nix-env -i ghc-8.6.5 \
-    #
-    # Install HIE for GHC 8.6.5
-    && nix-env -iA unstableFallback.selection --arg selector 'p: { inherit (p) ghc865; }' -f https://github.com/infinisil/all-hies/tarball/master
+USER root
+
+# Configure apt and install packages
+RUN apt-get update \
+    && apt-get -y install \
+        apt-utils \
+        net-tools \
+        git \
+        curl
+
+# Install Nix
+RUN addgroup --system nixbld \
+  && adduser root nixbld \
+  && for i in $(seq 1 30); do useradd -ms /bin/bash nixbld$i &&  adduser nixbld$i nixbld; done \
+  && mkdir -m 0755 /nix && chown root /nix \
+  && mkdir -p /etc/nix && echo 'sandbox = false' > /etc/nix/nix.conf
+
+# Install Nix
+CMD /bin/bash -l
+USER root
+ENV USER root
+WORKDIR /home/root
+
+RUN touch .bash_profile \
+ && curl https://nixos.org/releases/nix/nix-2.2.1/install | sh 
+
+RUN echo '. /root/.nix-profile/etc/profile.d/nix.sh' >> /root/.bashrc
+
+# Install HIE
+RUN . /root/.nix-profile/etc/profile.d/nix.sh \
+  && nix-env -iA nixpkgs.haskell.compiler.ghc865 \
+  && nix-env -iA cachix -f https://cachix.org/api/v1/install \
+  && cachix use all-hies \
+  && nix-env -iA selection --arg selector 'p: { inherit (p) ghc865; }' -f https://github.com/infinisil/all-hies/tarball/master
